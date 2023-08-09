@@ -1,0 +1,593 @@
+---
+author: Norman Tannhäuser
+title: next.js tutorial for beginners
+date: "2023-08-01"
+source: "https://www.youtube.com/watch?v=6h649f2fB9Q&list=PL0Zuz27SZ-6Pk-QJIdGd1tGZEzy9RTgtj&index=1"
+source-author: Dave Gray
+type: [coursenotes]
+status: in progress
+alias: []
+tags: [nextjs]
+---
+
+# why nextjs
+
+- server side rendering, better performance by rendering html on the server
+- code splitting, shorter load times
+- seo optimization
+- faster development, better dev experience
+- typescript support
+- scalability
+
+# pre-rendering
+
+- generates html for each page in advance instead of having it done client side by javacript (as react typically does)
+- only js code necessary for the page gets sent, when the page is loaded by the browser, its js code runs and makes the page fully interactive ([[hydration]])
+- two forms of pre-rendering:
+
+## static generation
+
+- recommended: the html is generated at build time and will be reused on each request
+
+## [[server-side rendering]]
+
+- html is generated on each request
+
+- next let’s you choose which pattern to use depending on what you need, and supports hybrid apps that combine both
+
+# CDN - content delivery network
+
+- def: a cdn is a network of servers linked together with the goal of delivering content as quickly, cheaply, reliably and securely as possible. In order to improve speed and connectivity, a cdn will place servers at the exchange points between different networks. [cloudflare reference](https://www.cloudflare.com/en-gb/learning/cdn/what-is-a-cdn/)
+
+# Pages and Layout and naming conventions
+
+- basic routing: create folders in the app directory which contain `page.tsx`files
+- in the `page.tsx` file create react functional components named like the route
+- the layout file contains parts that apply to the entire app/each page entire tree (nav bar) or to pages in subtrees
+- components are named and capitalized in the component folder (eg. `Search.tsx` or `Navbar.tsx`)
+- dynamic routers are in folders with bracket names (eg. `[userId]`), note that the name used inside the brackets will be passed as a param in the respective page file
+
+> [!important] Nota bene
+> A lot of functionality in next hinges on following naming conventions. When something doesn’t seem to work **at all** (even no console.log output), check for typos and placement of folders in the folderstructure of the project.
+
+# styles
+
+- globally applied styles under globals.css, import into global layout file and it will get applied to all routes
+- importable local styles inside resp. folders called `styles.module.css`
+- import styles into local layout files and apply styles in the desired className attributes, eg. `className={styles.main}` (if you defined a class main in the css file
+
+  )
+
+- same classes can have different stylings depending on the nesting level where they are applied;
+- naming conventions:
+  - globals.css for styles applied to the global layout file
+  - styles.module.css for styles applied to the local layout file
+  - page.module.css for styles applied to the local page file
+
+# SEO and metadata
+
+- export metadata object in static page or layout fil
+
+  e
+
+```tsx
+import { Metadata } from "next";
+
+export const metadata: Metadata = {
+  title: "...",
+  description: "...",
+};
+
+export default function Page() {}
+```
+
+# loading state / loading page
+
+- add a `loading.tsx` file next to the page file and next will use it as a loading file, uses react suspense
+
+# error boundaries
+
+- error components must be client components → “use client”
+- create an error page
+- error page will be loaded automatically if page throws an error
+- or set an errorboundary in the layoutfile that wraps all children that are to be error handled
+- as fallback attribute of the errorboundary, pass in the error page:
+
+```tsx
+<ErrorBoundary fallback={<Error />}
+	{... children}
+</ErrorBoundary>
+```
+
+- [doc ref](https://nextjs.org/docs/app/building-your-application/routing/error-handling)
+
+# data fetching
+
+- big plus of next is the use of server components, that fetch data on the server, in parallel, minimizing loading times
+- progressively rendering a page is possible
+- put fetch function like this in a root level lib folder so they are accessible from everywhere:
+
+```tsx
+export default async function getAllUsers() {
+  const res = await fetch("https://jsonplaceholder.typicode.com/users");
+  if (!res.ok) throw new Error("Failed to fetch data");
+  return res.json();
+}
+```
+
+> [!tip] error handling for api calls
+> note that we don’t wrap the fetch in a try block. we use error boundaries from next to handle errors
+
+- next supports prefetching things, when hovering over a link for example
+
+## parallel data fetching
+
+[reference](https://nextjs.org/docs/app/building-your-application/data-fetching/patterns#parallel-data-fetching)
+
+- calling the get function without immediately resolving the promise (**not using the await keyword**)
+
+```tsx
+export default async function UserPage({ params: { userId } }: Params) {
+  const userData: Promise<User> = getUser(userId);
+  const userPostsData: Promise<Post[]> = getUserPosts(userId);
+  const [user, userPosts] = await Promise.all([userData, userPostsData]);
+  return <div>page</div>;
+}
+```
+
+- note that we pass the promises to variables that will get used in the return statement and then resolved in parallel
+
+## progressively rendering the page
+
+- using Loading UI, Streaming and Suspense
+- [reference](https://nextjs.org/docs/app/building-your-application/data-fetching/patterns)
+
+```tsx
+export default async function UserPage({ params: { userId } }: Params) {
+  const userData: Promise<User> = getUser(userId);
+  const userPostsData: Promise<Post[]> = getUserPosts(userId);
+  const [user, userPosts] = await Promise.all([userData, userPostsData]);
+  return (
+    <>
+      <h2>{user.name}</h2>
+      <br />
+      <Suspense fallback={<h2>Loading...</h2>}>
+        <UserPosts promise={userPostsData} />
+      </Suspense>
+    </>
+  );
+}
+```
+
+- note that we can pass a promise in the props of a functional component and use reacts suspense to define a fallback as long as the fetching is not complete
+
+# type definition
+
+- the `next-env.d.ts` file contains type definitions
+- for our own custom type definition we can create files following the same naming convention so the compiler understands their role, like `types.d.ts`
+
+# Generating dynamic metadata
+
+[reference](https://nextjs.org/docs/app/building-your-application/optimizing/metadata#dynamic-metadata)
+
+- create a generateMetadata function in the respective component/page file and import the Metadata type from next; the function should look something like this:
+
+```tsx
+export async function generateMetadata({
+  params: { userId },
+}: Params): Promise<Metadata> {
+  // note that duplicated requests will get deduplicated by next (getUser gets called 2 times)
+  const userData: Promise<User> = getUser(userId);
+  const user: User = await userData;
+  return {
+    title: user.name,
+    description: `This is the page of ${user.name}`,
+  };
+}
+```
+
+# which pages are static ([[SSG]]), which are server side rendered [[server-side rendering|SSR]]?
+
+- this information is not easily available in dev mode
+- `npm run build` will create an overview in the cli listing each route and their status (server or static)
+- static pages are built on the server and sent to CDNs
+- SSR pages are rendered at request time on the server
+- `npm run start` to check the response time of the build
+
+# Incremental Static Regeneration ISR
+
+- data from fetches is [[Cache|cached]] by default in next, option value in fetch: cache: ‘force-cache’; to make the fetch always dynamic: cache: ‘no-store’
+- incremental updates are possible as well:
+  - create the page initially
+  - check every so often for updated data/stale data
+  - instead of cache, the option is `next: {revalidate: 60}` → updates data every 60s
+  - can be applied to either SSG and SSR
+  - ex:
+
+```tsx
+export default async function getUserPosts(userId: string) {
+  const res = await fetch(
+    `https://jsonplaceholder.typicode.com/posts?userId=${userId}`,
+    { next: { revalidate: 60 } }
+  );
+  if (!res.ok) throw new Error("Failed to fetch user.");
+  return res.json();
+}
+```
+
+## segment level caching
+
+[reference](https://nextjs.org/docs/app/api-reference/file-conventions/route-segment-config#revalidate)
+
+- set variable `revalidate` on page or. layout to define cache lifetime on that route
+- `export const revalidate = 60`
+
+## generate static params
+
+[reference](https://nextjs.org/docs/app/api-reference/functions/generate-static-params)
+
+- you can tell next what params to expect in a dynamic route like `[userId]` by using function generateStaticParams in the tsx file of the dynamically rendered page
+- the return params have to be string
+- ex:
+
+```tsx
+export async function generateStaticParams() {
+  const usersData: Promise<User[]> = getAllUsers();
+  const users = await usersData;
+  return users.map((user) => ({ userId: user.id.toString() }));
+}
+```
+
+- by defining what params to be expected, next can prerender static sites even though they are dynamic
+
+# dynamicParams
+
+- this option is on by default and means that dynamic pages will be prerendered
+- pages that go beyond the boundaries of the generated params that the user might try to get need an error page
+- there is one provided by next with the `import {notFound} from ‘next/navigation’` and validate before the return in the function component:
+
+```tsx
+export default async function UserPage({ params: { userId } }: Params) {
+  const userData: Promise<User> = getUser(userId);
+  const userPostsData: Promise<Post[]> = getUserPosts(userId);
+  const user = await userData;
+  if (!user?.name) return notFound(); // here
+  return (
+    <>
+      <h2>{user.name}</h2>
+      <br />
+      <Suspense fallback={<h2>Loading...</h2>}>
+        <UserPosts promise={userPostsData} />
+      </Suspense>
+    </>
+  );
+}
+```
+
+- include metadata for the case that a specific user is not found
+
+```tsx
+export async function generateMetadata({
+  params: { userId },
+}: Params): Promise<Metadata> {
+  // note that duplicated requests will get deduplicated by next (getUser gets called 2 times)
+  const userData: Promise<User> = getUser(userId);
+  const user: User = await userData;
+  if (!user?.name) {
+    // here
+    return { title: "User not found" };
+  }
+  return {
+    title: user.name,
+    description: `This is the page of ${user.name}`,
+  };
+}
+```
+
+- in the respective fetch call, when the response is empty, return undefined instead of throwing an error:
+
+```tsx
+export default async function getUser(userId: string) {
+  const res = await fetch(
+    `https://jsonplaceholder.typicode.com/users/${userId}`
+  );
+  if (!res.ok) return undefined;
+  return res.json();
+}
+```
+
+- you can customize an error page on the level of the dynamic page, called `not-found.tsx` ([reference](https://nextjs.org/docs/app/api-reference/file-conventions/not-found))
+
+# client components
+
+[link to code](file:///Users/nortan/Documents/coding/tutorials/nextjs/next05-client-components)
+
+- if you need a hook, clickhandler or other interactivity, you need a client component
+- adding [[tailwind]]
+- `"use client"` at the start of the component file
+- client component can be used in server components
+
+# creating a blog
+
+- initialize next with tailwind
+- install [typography plugin](https://tailwindcss.com/docs/typography-plugin) to handle and style vanilla html automatically (from imported markdown for example):
+- `npm install -D @tailwindcss/typography`
+- prose class can help formatting the page (max width of blogposts etc.)
+- add root level folder for blogposts in markdown
+- `npm i gray-matter` to deal with md frontmatter/metadata
+- `npm i remark remark-html` to convert md to html
+- to make the creation of the post pages static, add a generateStaticParams function and tell next what to expect:
+
+```tsx
+export function generateStaticParams() {
+  const posts = getSortedPostsData(); //deduped
+  return posts.map((post) => ({
+    postId: post.id,
+  }));
+}
+```
+
+# Route handlers
+
+[reference](https://nextjs.org/docs/app/building-your-application/routing/route-handlers)
+
+- placed in the app path, preferably inside the api folder
+- “they are the equivalent of API Routes inside the pages directory meaning you do not need to use API Routes and Route Handlers together”
+- example in the file `route.ts` inside src/app/api/hello:
+
+```ts
+export async function GET(request: Request) {
+  return new Response("Hello, Next.js!");
+}
+```
+
+- the **request parameter is not necessary** for this get endpoint to function, it will be **statically evaluated**
+- **with request object** in a GET endpoint, it becomes a **dynamic route handler**, as well as any other type of [[(Internet)HTTP request methods|HTTP methods]] and using dynamic functions like cookies and headers
+
+# Rest API
+
+[reference](https://nextjs.org/docs/pages/building-your-application/routing/api-routes)
+
+- use cases:
+  - Masking the URL of an external service (e.g. `/api/secret` instead of `https://company.com/secret-url`)
+  - Using [Environment Variables](https://nextjs.org/docs/pages/building-your-application/configuring/environment-variables) on the server to securely access external services.
+- no need if:
+  - you are fetching from a server component, secrets will already be hidden on the server, unavailable in the client side code
+
+# Middleware
+
+[reference](https://nextjs.org/docs/pages/building-your-application/routing/middleware)
+
+- create `middleware.ts` in src or root directory
+- return `NextResponse.next()` to get back to route as supposed to
+- basic ex:
+
+```ts
+import { NextResponse } from "next/server";
+
+export function middleware(request: Request) {
+  console.log("Middleware");
+  console.log(request.method);
+  console.log(request.url);
+
+  const origin = request.headers.get("origin");
+  console.log(origin);
+
+  return NextResponse.next();
+}
+```
+
+- this gets applied to **every** request on every route; to match paths use config variable
+
+```ts
+// apply a matcher
+export const config = {
+  matcher: "/api/:path*", //this matches all routes in api path
+};
+```
+
+- works as well with conditionals inside the middleware function:
+
+```ts
+if (request.url.includes("/api/")) {
+  // ...
+}
+```
+
+- [[regex]] are possible as well
+
+```ts
+const regex = new RegExp('/api/*')
+if(regex.test(request.url))
+```
+
+## useful middleware
+
+#best-practice
+
+### rate limiting
+
+- [limiter](https://www.npmjs.com/package/limiter): package that enables [[rate limiting]] to requests, protects against abusive usage
+  - correction: has to be applied in the routes, eg. create `limiter.ts` in api folder
+
+```ts
+import { RateLimiter } from "limiter";
+
+export const limiter = new RateLimiter({
+  tokensPerInterval: 3,
+  interval: "min",
+  fireImmediately: true,
+});
+```
+
+- then import it to your routes and define what should happen, when a certain rate limit is violated:
+
+```ts
+import { NextResponse } from "next/server";
+import { limiter } from "../config/limiter";
+export async function GET(request: Request) {
+  const origin = request.headers.get("origin");
+  const remaining = await limiter.removeTokens(1);
+  console.log("remaining tokens", remaining);
+  if (remaining < 0) {
+    return new NextResponse(null, {
+      status: 429,
+      statusText: "Too Many Requests",
+      headers: {
+        "Access-Control-Allow-Origin": origin || "*",
+        "Content-Type": "text/plain",
+      },
+    });
+  }
+
+  return new Response("Hello, Next.js!");
+}
+```
+
+- tokens are shared between subroutes
+
+### CORS
+
+[reference](https://nextjs.org/docs/pages/building-your-application/routing/api-routes#caveats)
+
+- by default api routes are **same-origin only**
+- to change this so the api can be accessed from other origins or specified allowed origins, middleware is the right place to implement the origins options
+- the allowed origins list might depend on dev or prod mode
+
+# revalidation / incrementel static regeneration / ISR
+
+[reference](https://nextjs.org/docs/pages/building-your-application/rendering/incremental-static-regeneration)
+
+- this section is redundant to [[next.js tutorial for beginners#Incremental Static Regeneration ISR]]
+- do we need to rebuild the whole app everytime we post a new blog? how to use ISR with headless content management system (cms)?
+- in a fetch request we avoid stale data by providing a revalidation option to the function call, to revalidate data after a certain intervall:
+
+```tsx
+fetch("https://...", { next: { revalidate: 60 } });
+```
+
+- to revalidate data not using fetch (eg. using an external package or query builder) use route segment config and put `export const revalidate = 60` in the page.tsx of the resp. route to revalidate data every 60s
+- [route segment config reference](https://nextjs.org/docs/app/api-reference/file-conventions/route-segment-config):
+  - these params can only be applied to page, layout or routeHandlers
+- after change of data needs two reloads to render on the client; first reload/request triggers revalidation on the server but still serves old state, second serves new state
+
+## on demand revalidation
+
+[reference](https://nextjs.org/docs/app/building-your-application/data-fetching/fetching-caching-and-revalidating#on-demand-revalidation)
+
+- to revalidate data and render it immediately we need to create an endpoint that triggers the revalidation
+- can be placed in a route handler, eg. `app/api/revalidate/route.ts`
+
+```ts
+// example from the next docs:
+// https://<your-site.com/api/ravalidate?secret=<token>
+// the params design for our use case (2 params: path to revalidate and token to authenticate):
+// http://localhost:3000/api/revalidate?path=/&secret=9b3e1efa15da14485386b7c1283fbabe
+import { NextApiRequest, NextApiResponse } from "next";
+
+export default async function handler(
+  req: NextApiRequest,
+  res: NextApiResponse
+) {
+  if (req.query.secret !== process.env.MY_SECRET_TOKEN) {
+    return res.status(401).json({ message: "Invalid token" });
+  }
+  const path = req.query.path as string;
+  await res.revalidate(path);
+  return res.json({ revalidated: true });
+}
+```
+
+- when requesting this route with the required parameters, revalidation is triggered and the new data will be rendered client side with the next refresh
+
+# Server Actions
+
+[reference](https://nextjs.org/docs/app/building-your-application/data-fetching/server-actions)
+
+- server actions can enable interactivity in server components (whut? back to php - forms with no js)
+- are imported from the lib folder into the components that might use them
+- ex.
+
+```ts
+"use server";
+
+import { revalidatePath } from "next/cache";
+
+export async function addTodo(data: FormData) {
+  const title = data.get("title");
+
+  await fetch("http://127.0.0.1:3500/todos", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      userId: 1,
+      title,
+      completed: false,
+    }),
+  });
+  // revalidation of affected routes
+  revalidatePath("/");
+}
+```
+
+- imported and called in a form component:
+
+```tsx
+import { addTodo } from "@/lib/actions";
+
+export default function AddTodo() {
+  const content = (
+    <form action={addTodo} className="flex gap-2 items-center">
+      <input
+        type="text"
+        name="title"
+        className="text-2xl p-1 rounded-lg flex-grow w-full"
+        placeholder="New Todo"
+        autoFocus
+      />
+
+      <button
+        type="submit"
+        className="p-2 text-xl rounded-2xl text-black border-solid border-black border-2 max-w-xs bg-green-500 hover:cursor-pointer hover:bg-green-400"
+      >
+        Submit
+      </button>
+    </form>
+  );
+
+  return content;
+}
+```
+
+- **server mutations** = server actions that mutate your data and call redirect, revalidatePath or revalidateTag
+- ex:
+
+```ts
+export async function deleteTodo(todo: Todo) {
+  const res = await fetch(`http://127.0.0.1:3500/todos/${todo.id}`, {
+    method: "DELETE",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      id: todo.id,
+    }),
+  });
+
+  await res.json();
+  revalidatePath("/");
+}
+```
+
+> [!important] Caveats
+> While we use server actions to mutate data directly in the json server in this example, next is still using cached data on the client side, which can get out of sync. This happens in particular when using ‘soft’ aka client side navigation, which doesn’t trigger revalidation/clearing client side cache. Triggering router.refresh() in between routes should now clear clientside cache.
+> Interactivity can be reduced when needing to request the server before updating the interface (eg. clicking a checkbox). Here useOptimistic react hook can help that performs the action without waiting for the server response. Changes will be reverted if request was unsuccessful. See [tutorial](https://www.youtube.com/watch?v=BmUsDuLO598&list=PL0Zuz27SZ-6Pk-QJIdGd1tGZEzy9RTgtj&index=15&t=1408s)
+
+# Reference
+
+1. [[next.js]]
+2. [[online courses]]
+3. [youtube playlist](https://www.youtube.com/watch?v=6h649f2fB9Q&list=PL0Zuz27SZ-6Pk-QJIdGd1tGZEzy9RTgtj&index=1)
+4. [repos and resources](https://github.com/gitdagray/next-js-course)
